@@ -10,4 +10,4 @@ add_executable(Sutpid WIN32
     dependencies.c
 )
 
-target_link_libraries(Sutpid shell32 user32 gdi32 urlmon)
+target_link_libraries(Sutpid shell32 user32 gdi32)

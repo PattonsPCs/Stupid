@@ -3,8 +3,6 @@
 #include <string.h>
 #include <io.h>
 #include <shlobj.h>
-#include <urlmon.h>
-#pragma comment(lib, "urlmon.lib")
 #pragma comment(lib, "shell32.lib")
 
 #define ID_BUTTON_INSTALL_VLC 201
@@ -149,27 +147,83 @@ static int downloadVLCInstaller(char* outPath, size_t pathSize) {
         SetWindowTextA(statusWnd, "Downloading VLC installer...");
     }
     
-    // Download the file
-    HRESULT hr = URLDownloadToFileA(NULL, vlcUrl, outPath, 0, NULL);
+    // Use PowerShell to download the file (more reliable than URLDownloadToFile)
+    char psCmd[1024];
+    sprintf_s(psCmd, sizeof(psCmd),
+        "powershell.exe -Command \""
+        "try { "
+        "  $ProgressPreference = 'SilentlyContinue'; "
+        "  Invoke-WebRequest -Uri '%s' -OutFile '%s' -UseBasicParsing; "
+        "  exit 0 "
+        "} catch { exit 1 }\"",
+        vlcUrl, outPath);
     
-    // Wait a moment for file to be written
-    Sleep(500);
+    STARTUPINFOA si = {0};
+    PROCESS_INFORMATION pi = {0};
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
     
-    // Verify file exists and has reasonable size (> 1MB)
-    if (hr == S_OK && fileExists(outPath)) {
-        // Check file size to ensure download completed
-        WIN32_FILE_ATTRIBUTE_DATA fileInfo;
-        if (GetFileAttributesExA(outPath, GetFileExInfoStandard, &fileInfo)) {
-            LARGE_INTEGER fileSize;
-            fileSize.LowPart = fileInfo.nFileSizeLow;
-            fileSize.HighPart = fileInfo.nFileSizeHigh;
-            
-            // VLC installer should be at least 1MB
-            if (fileSize.QuadPart > 1024 * 1024) {
-                if (statusWnd) {
-                    SetWindowTextA(statusWnd, "Download complete!");
+    // Execute PowerShell download command
+    if (CreateProcessA(NULL, psCmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+        // Wait for download to complete (max 5 minutes)
+        WaitForSingleObject(pi.hProcess, 300000);
+        
+        DWORD exitCode;
+        GetExitCodeProcess(pi.hProcess, &exitCode);
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        
+        // Wait a moment for file to be fully written
+        Sleep(1000);
+        
+        // Verify file exists and has reasonable size (> 1MB)
+        if (exitCode == 0 && fileExists(outPath)) {
+            // Check file size to ensure download completed
+            WIN32_FILE_ATTRIBUTE_DATA fileInfo;
+            if (GetFileAttributesExA(outPath, GetFileExInfoStandard, &fileInfo)) {
+                LARGE_INTEGER fileSize;
+                fileSize.LowPart = fileInfo.nFileSizeLow;
+                fileSize.HighPart = fileInfo.nFileSizeHigh;
+                
+                // VLC installer should be at least 1MB
+                if (fileSize.QuadPart > 1024 * 1024) {
+                    if (statusWnd) {
+                        SetWindowTextA(statusWnd, "Download complete!");
+                    }
+                    return 1;
                 }
-                return 1;
+            }
+        }
+    }
+    
+    // Try alternative: use curl if available (Windows 10+)
+    char curlCmd[1024];
+    sprintf_s(curlCmd, sizeof(curlCmd), "curl.exe -L -o \"%s\" \"%s\"", outPath, vlcUrl);
+    
+    if (CreateProcessA(NULL, curlCmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+        WaitForSingleObject(pi.hProcess, 300000);
+        
+        DWORD exitCode;
+        GetExitCodeProcess(pi.hProcess, &exitCode);
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        
+        Sleep(1000);
+        
+        if (exitCode == 0 && fileExists(outPath)) {
+            WIN32_FILE_ATTRIBUTE_DATA fileInfo;
+            if (GetFileAttributesExA(outPath, GetFileExInfoStandard, &fileInfo)) {
+                LARGE_INTEGER fileSize;
+                fileSize.LowPart = fileInfo.nFileSizeLow;
+                fileSize.HighPart = fileInfo.nFileSizeHigh;
+                
+                if (fileSize.QuadPart > 1024 * 1024) {
+                    if (statusWnd) {
+                        SetWindowTextA(statusWnd, "Download complete!");
+                    }
+                    return 1;
+                }
             }
         }
     }
