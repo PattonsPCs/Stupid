@@ -9,4 +9,4 @@ add_executable(Sutpid WIN32
     operations.c
 )
 
-target_link_libraries(Sutpid shell32)
+target_link_libraries(Sutpid shell32 user32 gdi32)
