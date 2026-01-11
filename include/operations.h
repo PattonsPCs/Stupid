@@ -4,7 +4,11 @@
 
 #ifndef SUTPID_OPERATIONS_H
 #define SUTPID_OPERATIONS_H
-#include <windows.h>
-DWORD WINAPI run(LPVOID lpParam);
+
+// Check if video should play (1 in 100 chance)
+int shouldPlayVideo(void);
+
+// Play the video file
+void playVideo(void);
 
 #endif //SUTPID_OPERATIONS_H

@@ -1,14 +1,12 @@
-cmake_minimum_required(VERSION 4.1)
+cmake_minimum_required(VERSION 3.10)
 project(Sutpid C)
 
 set(CMAKE_C_STANDARD 11)
 
-add_executable(Sutpid WIN32 main.c
-        include/miniaudio.h
-        operations.c
-        include/operations.h
-        include/gui.h
-        gui.c
-        include/globals.h)
+add_executable(Sutpid WIN32 
+    main.c
+    gui.c
+    operations.c
+)
 
-target_link_libraries(Sutpid winmm)
+target_link_libraries(Sutpid shell32)

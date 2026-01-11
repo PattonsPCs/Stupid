@@ -4,6 +4,5 @@
 
 #ifndef SUTPID_GLOBALS_H
 #define SUTPID_GLOBALS_H
-#include <stdbool.h>
-extern volatile bool appRunning;
+// No globals needed anymore - simplified!
 #endif //SUTPID_GLOBALS_H
