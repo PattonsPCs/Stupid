@@ -16,6 +16,9 @@
 #define ID_STATIC_NOTE 208
 #define ID_STATIC_PROGRESS 209
 
+// Global window handle for dependency installer
+static HWND g_depsWindow = NULL;
+
 // Check if a file exists
 static int fileExists(const char* path) {
     return (_access(path, 0) == 0);
@@ -253,8 +256,6 @@ static void installVLCWithElevation(HWND hwnd) {
         }
     }
 }
-
-static HWND g_depsWindow = NULL;
 
 LRESULT CALLBACK depsProc(HWND hwnd, UINT uMsg, WPARAM wparam, LPARAM lparam) {
     switch (uMsg) {
