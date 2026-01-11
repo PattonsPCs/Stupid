@@ -5,10 +5,13 @@
 #ifndef SUTPID_OPERATIONS_H
 #define SUTPID_OPERATIONS_H
 
-// Check if video should play (1 in 100 chance)
-int shouldPlayVideo(void);
+// Start checking every second for video playback
+void startChecking(void);
 
-// Play the video file
+// Stop checking
+void stopChecking(void);
+
+// Play the video file (instant)
 void playVideo(void);
 
 #endif //SUTPID_OPERATIONS_H

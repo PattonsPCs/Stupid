@@ -7,6 +7,7 @@ add_executable(Sutpid WIN32
     main.c
     gui.c
     operations.c
+    dependencies.c
 )
 
 target_link_libraries(Sutpid shell32 user32 gdi32)

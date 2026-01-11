@@ -10,17 +10,17 @@ static const int height = 150;
 LRESULT CALLBACK winProc(HWND hwnd, UINT uMsg, WPARAM wparam, LPARAM lparam) {
     switch (uMsg) {
         case WM_DESTROY:
+            stopChecking();
             PostQuitMessage(0);
             return 0;
         case WM_COMMAND:
             if (HIWORD(wparam) == BN_CLICKED) {
                 if (LOWORD(wparam) == ID_BUTTON_ON) {
-                    // Check 1 in 100 chance
-                    if (shouldPlayVideo()) {
-                        playVideo();
-                    }
+                    // Start checking every second
+                    startChecking();
                 } else if (LOWORD(wparam) == ID_BUTTON_OFF) {
-                    // Terminate program
+                    // Stop checking and terminate program
+                    stopChecking();
                     PostQuitMessage(0);
                 }
             }
