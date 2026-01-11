@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <stdio.h>
+#include <string.h>
 #include <io.h>
 #include <shlobj.h>
 #include <urlmon.h>
@@ -128,7 +129,13 @@ static int downloadVLCInstaller(char* outPath, size_t pathSize) {
         return 0;
     }
     
-    sprintf_s(outPath, pathSize, "%svlc_installer.exe", tempPath);
+    // Ensure temp path ends with backslash
+    size_t len = strlen(tempPath);
+    if (len > 0 && tempPath[len - 1] != '\\') {
+        sprintf_s(outPath, pathSize, "%s\\vlc_installer.exe", tempPath);
+    } else {
+        sprintf_s(outPath, pathSize, "%svlc_installer.exe", tempPath);
+    }
     
     // VLC download URL (latest Windows 64-bit installer)
     // This URL redirects to the latest version
@@ -145,15 +152,35 @@ static int downloadVLCInstaller(char* outPath, size_t pathSize) {
     // Download the file
     HRESULT hr = URLDownloadToFileA(NULL, vlcUrl, outPath, 0, NULL);
     
+    // Wait a moment for file to be written
+    Sleep(500);
+    
+    // Verify file exists and has reasonable size (> 1MB)
     if (hr == S_OK && fileExists(outPath)) {
-        if (statusWnd) {
-            SetWindowTextA(statusWnd, "Download complete!");
+        // Check file size to ensure download completed
+        WIN32_FILE_ATTRIBUTE_DATA fileInfo;
+        if (GetFileAttributesExA(outPath, GetFileExInfoStandard, &fileInfo)) {
+            LARGE_INTEGER fileSize;
+            fileSize.LowPart = fileInfo.nFileSizeLow;
+            fileSize.HighPart = fileInfo.nFileSizeHigh;
+            
+            // VLC installer should be at least 1MB
+            if (fileSize.QuadPart > 1024 * 1024) {
+                if (statusWnd) {
+                    SetWindowTextA(statusWnd, "Download complete!");
+                }
+                return 1;
+            }
         }
-        return 1;
     }
     
     if (statusWnd) {
         SetWindowTextA(statusWnd, "Download failed. Trying alternative method...");
+    }
+    
+    // Clean up partial download if it exists
+    if (fileExists(outPath)) {
+        DeleteFileA(outPath);
     }
     
     // Fallback: try to open download page
@@ -183,19 +210,42 @@ static void installVLCWithElevation(HWND hwnd) {
         return;
     }
     
+    // Convert to absolute path if not already
+    char absolutePath[MAX_PATH];
+    if (GetFullPathNameA(installerPath, MAX_PATH, absolutePath, NULL) == 0) {
+        strcpy_s(absolutePath, MAX_PATH, installerPath);
+    }
+    
+    // Verify file exists before trying to run it
+    if (!fileExists(absolutePath)) {
+        char errorMsg[512];
+        sprintf_s(errorMsg, sizeof(errorMsg), 
+            "Downloaded installer file not found.\n\n"
+            "Expected path: %s\n\n"
+            "The file may have been deleted or download failed.",
+            absolutePath);
+        MessageBoxA(hwnd, errorMsg, "File Not Found", MB_OK | MB_ICONERROR);
+        if (statusWnd) {
+            SetWindowTextA(statusWnd, "");
+        }
+        return;
+    }
+    
     if (statusWnd) {
         SetWindowTextA(statusWnd, "Requesting administrator privileges...");
     }
     
     // Request admin privileges and run installer
+    // ShellExecuteEx needs the full path
     SHELLEXECUTEINFOA sei = {0};
     sei.cbSize = sizeof(SHELLEXECUTEINFOA);
     sei.fMask = SEE_MASK_NOCLOSEPROCESS;
     sei.hwnd = hwnd;
     sei.lpVerb = "runas";  // Request elevation
-    sei.lpFile = installerPath;
+    sei.lpFile = absolutePath;  // Use absolute path
     sei.lpParameters = "/S /NCRC";  // Silent install, no CRC check (faster)
     sei.nShow = SW_HIDE;
+    sei.lpDirectory = NULL;  // Use file's directory
     
     if (ShellExecuteExA(&sei)) {
         if (statusWnd) {
@@ -209,7 +259,7 @@ static void installVLCWithElevation(HWND hwnd) {
         }
         
         // Clean up installer
-        DeleteFileA(installerPath);
+        DeleteFileA(absolutePath);
         
         if (statusWnd) {
             SetWindowTextA(statusWnd, "Installation complete! Checking...");
