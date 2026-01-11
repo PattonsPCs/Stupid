@@ -1,10 +1,28 @@
 #include <stdlib.h>
 #include <time.h>
+#include <string.h>
 #include <windows.h>
 #include <process.h>
 
-// Path to your video file - change this to your video file path
-#define VIDEO_FILE_PATH "C:\\Users\\antho\\Downloads\\Voicy_foxy jumpscare fnaf2.mp4"
+// Get video file path - looks in same directory as exe, then falls back to hardcoded path
+static void getVideoFilePath(char* outPath, size_t pathSize) {
+    // First, try to find video in the same directory as the executable
+    char exePath[MAX_PATH];
+    if (GetModuleFileNameA(NULL, exePath, MAX_PATH) != 0) {
+        // Get directory of exe
+        char* lastSlash = strrchr(exePath, '\\');
+        if (lastSlash) {
+            *lastSlash = '\0';
+            sprintf_s(outPath, pathSize, "%s\\video.mp4", exePath);
+            if (_access(outPath, 0) == 0) {
+                return;  // Found video in exe directory
+            }
+        }
+    }
+    
+    // Fallback: use hardcoded path (for development)
+    strcpy_s(outPath, pathSize, "C:\\Users\\antho\\Downloads\\Voicy_foxy jumpscare fnaf2.mp4");
+}
 
 // Global flag to control the background thread
 volatile int g_running = 0;
@@ -24,6 +42,9 @@ int shouldPlayVideo(void) {
 
 // Play the video file instantly using VLC (fastest) or fallback method
 void playVideo(void) {
+    char videoPath[MAX_PATH];
+    getVideoFilePath(videoPath, sizeof(videoPath));
+    
     STARTUPINFOA si = {0};
     PROCESS_INFORMATION pi = {0};
     si.cb = sizeof(si);
@@ -41,7 +62,7 @@ void playVideo(void) {
     
     for (int i = 0; i < 3; i++) {
         sprintf_s(cmd, sizeof(cmd), "\"%s\" --intf=dummy --play-and-exit --fullscreen --no-video-deco \"%s\"", 
-                 vlcPaths[i], VIDEO_FILE_PATH);
+                 vlcPaths[i], videoPath);
         
         if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
             CloseHandle(pi.hThread);
@@ -51,7 +72,7 @@ void playVideo(void) {
     }
     
     // Fallback: Try mpv if available (also very fast)
-    sprintf_s(cmd, sizeof(cmd), "mpv.exe --fs --no-terminal --no-osc \"%s\"", VIDEO_FILE_PATH);
+    sprintf_s(cmd, sizeof(cmd), "mpv.exe --fs --no-terminal --no-osc \"%s\"", videoPath);
     if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
@@ -59,7 +80,7 @@ void playVideo(void) {
     }
     
     // Last resort: Use Windows default player (slower but works)
-    ShellExecuteA(NULL, "open", VIDEO_FILE_PATH, NULL, NULL, SW_SHOWMAXIMIZED);
+    ShellExecuteA(NULL, "open", videoPath, NULL, NULL, SW_SHOWMAXIMIZED);
 }
 
 // Background thread that checks every second
