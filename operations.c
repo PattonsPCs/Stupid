@@ -40,6 +40,89 @@ int shouldPlayVideo(void) {
     return (roll == 0);  // 1 in 100 chance (0-99, so 0 is 1/100)
 }
 
+// Data structure for window enumeration
+struct EnumWindowData {
+    DWORD processId;
+    HWND hwnd;
+};
+
+// Callback function for EnumWindows to find VLC window
+static BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam) {
+    struct EnumWindowData* data = (struct EnumWindowData*)lParam;
+    DWORD windowProcessId;
+    GetWindowThreadProcessId(hwnd, &windowProcessId);
+    
+    if (windowProcessId == data->processId && IsWindowVisible(hwnd)) {
+        char className[256];
+        GetClassNameA(hwnd, className, sizeof(className));
+        // VLC uses "QWidget" class name or similar
+        if (strstr(className, "QWidget") != NULL || 
+            strstr(className, "VLC") != NULL ||
+            GetWindowTextLengthA(hwnd) > 0) {
+            data->hwnd = hwnd;
+            return FALSE;  // Stop enumeration
+        }
+    }
+    return TRUE;  // Continue enumeration
+}
+
+// Callback to find any visible window from a process
+static BOOL CALLBACK FindAnyVisibleWindowProc(HWND hwnd, LPARAM lParam) {
+    struct EnumWindowData* data = (struct EnumWindowData*)lParam;
+    DWORD windowProcessId;
+    GetWindowThreadProcessId(hwnd, &windowProcessId);
+    
+    if (windowProcessId == data->processId && IsWindowVisible(hwnd)) {
+        data->hwnd = hwnd;
+        return FALSE;  // Stop enumeration
+    }
+    return TRUE;  // Continue enumeration
+}
+
+// Helper function to find window by process ID
+static HWND FindWindowByProcessId(DWORD processId) {
+    struct EnumWindowData data = { processId, NULL };
+    EnumWindows(EnumWindowsProc, (LPARAM)&data);
+    return data.hwnd;
+}
+
+// Force window to foreground (aggressive method)
+static void ForceWindowToForeground(HWND hwnd) {
+    if (hwnd == NULL) return;
+    
+    // Allow this process to set foreground window (needed for background threads)
+    DWORD currentThreadId = GetCurrentThreadId();
+    DWORD foregroundThreadId = GetWindowThreadProcessId(GetForegroundWindow(), NULL);
+    
+    if (foregroundThreadId != currentThreadId) {
+        AttachThreadInput(foregroundThreadId, currentThreadId, TRUE);
+    }
+    
+    // Multiple methods to ensure it comes to front
+    ShowWindow(hwnd, SW_RESTORE);
+    ShowWindow(hwnd, SW_SHOW);
+    ShowWindow(hwnd, SW_SHOWMAXIMIZED);
+    SetForegroundWindow(hwnd);
+    BringWindowToTop(hwnd);
+    SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+    SetActiveWindow(hwnd);
+    
+    // Force focus
+    SetFocus(hwnd);
+    
+    // Try multiple times to ensure it stays on top
+    for (int i = 0; i < 3; i++) {
+        SetForegroundWindow(hwnd);
+        BringWindowToTop(hwnd);
+        SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+        Sleep(50);
+    }
+    
+    if (foregroundThreadId != currentThreadId) {
+        AttachThreadInput(foregroundThreadId, currentThreadId, FALSE);
+    }
+}
+
 // Play the video file instantly using VLC (fastest) or fallback method
 void playVideo(void) {
     char videoPath[MAX_PATH];
@@ -49,7 +132,7 @@ void playVideo(void) {
     PROCESS_INFORMATION pi = {0};
     si.cb = sizeof(si);
     si.dwFlags = STARTF_USESHOWWINDOW;
-    si.wShowWindow = SW_HIDE;
+    si.wShowWindow = SW_SHOWMAXIMIZED;  // Show maximized instead of hiding
     
     char cmd[1024];
     
@@ -64,7 +147,31 @@ void playVideo(void) {
         sprintf_s(cmd, sizeof(cmd), "\"%s\" --intf=dummy --play-and-exit --fullscreen --no-video-deco \"%s\"", 
                  vlcPaths[i], videoPath);
         
-        if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+        // Remove CREATE_NO_WINDOW so window can be shown and brought to front
+        if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+            // Wait for VLC window to appear and try multiple times
+            HWND vlcWindow = NULL;
+            for (int attempt = 0; attempt < 10 && vlcWindow == NULL; attempt++) {
+                Sleep(100);  // Wait 100ms between attempts
+                
+                // Find VLC window by process ID
+                vlcWindow = FindWindowByProcessId(pi.dwProcessId);
+                if (vlcWindow == NULL) {
+                    // Try finding by class name as fallback
+                    vlcWindow = FindWindowA("QWidget", NULL);
+                    if (vlcWindow == NULL) {
+                        // Try any visible window from this process
+                        struct EnumWindowData data = { pi.dwProcessId, NULL };
+                        EnumWindows(FindAnyVisibleWindowProc, (LPARAM)&data);
+                        vlcWindow = data.hwnd;
+                    }
+                }
+            }
+            
+            if (vlcWindow != NULL) {
+                ForceWindowToForeground(vlcWindow);
+            }
+            
             CloseHandle(pi.hThread);
             CloseHandle(pi.hProcess);
             return;  // Success!
@@ -73,7 +180,12 @@ void playVideo(void) {
     
     // Fallback: Try mpv if available (also very fast)
     sprintf_s(cmd, sizeof(cmd), "mpv.exe --fs --no-terminal --no-osc \"%s\"", videoPath);
-    if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+    if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+        Sleep(200);
+        HWND mpvWindow = FindWindowByProcessId(pi.dwProcessId);
+        if (mpvWindow != NULL) {
+            ForceWindowToForeground(mpvWindow);
+        }
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
         return;
