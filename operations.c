@@ -26,8 +26,22 @@ static void getVideoFilePath(char* outPath, size_t pathSize) {
 
 // Global flag to control the background thread
 volatile int g_running = 0;
+// Global chance denominator (e.g., 5 means 1/5 chance)
+volatile int g_chanceDenominator = 5;
 
-// Check if we should play the video (1 in 100 chance)
+// Set the chance denominator (2 to 100)
+void setChanceDenominator(int denominator) {
+    if (denominator >= 2 && denominator <= 100) {
+        g_chanceDenominator = denominator;
+    }
+}
+
+// Get the current chance denominator
+int getChanceDenominator(void) {
+    return g_chanceDenominator;
+}
+
+// Check if we should play the video (configurable chance)
 // Returns 1 if video should play, 0 otherwise
 int shouldPlayVideo(void) {
     static int initialized = 0;
@@ -36,8 +50,8 @@ int shouldPlayVideo(void) {
         initialized = 1;
     }
     
-    int roll = rand() % 100;
-    return (roll == 0);  // 1 in 100 chance (0-99, so 0 is 1/100)
+    int roll = rand() % g_chanceDenominator;
+    return (roll == 0);  // 1 in g_chanceDenominator chance
 }
 
 // Data structure for window enumeration
