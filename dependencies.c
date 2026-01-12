@@ -119,6 +119,15 @@ static BOOL isRunningAsAdmin(void) {
     return isAdmin;
 }
 
+// Check if system is 64-bit
+static BOOL isSystem64Bit(void) {
+    SYSTEM_INFO si;
+    GetNativeSystemInfo(&si);
+    // Check the actual system architecture (not the process architecture)
+    return (si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64 || 
+            si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_ARM64);
+}
+
 // Download VLC installer
 static int downloadVLCInstaller(char* outPath, size_t pathSize) {
     // Get temp directory
@@ -135,9 +144,16 @@ static int downloadVLCInstaller(char* outPath, size_t pathSize) {
         sprintf_s(outPath, pathSize, "%svlc_installer.exe", tempPath);
     }
     
-    // VLC download URL (latest Windows 64-bit installer)
-    // This URL redirects to the latest version
-    const char* vlcUrl = "https://get.videolan.org/vlc/last/win64/vlc-3.0.21-win64.exe";
+    // Detect system architecture and download appropriate VLC installer
+    BOOL is64Bit = isSystem64Bit();
+    const char* vlcUrl;
+    if (is64Bit) {
+        // 64-bit Windows - download 64-bit VLC installer
+        vlcUrl = "https://get.videolan.org/vlc/last/win64/vlc-3.0.21-win64.exe";
+    } else {
+        // 32-bit Windows - download 32-bit VLC installer
+        vlcUrl = "https://get.videolan.org/vlc/last/win32/vlc-3.0.21-win32.exe";
+    }
     
     // Alternative: use the main download page if direct link fails
     // We'll try direct download first, fallback to manual download if needed
